@@ -1,0 +1,755 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZR_HR_PY001_DOWNLOAD
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  HANDLE_USER_COMMAND1
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_E_UCOMM  text
+*----------------------------------------------------------------------*
+  DATA: li_row         TYPE i,
+        li_currentrow  TYPE i,
+        li_lines       TYPE i,
+        ls_currentrow  TYPE string,
+        ls_lines       TYPE string,
+        ln_percent(3)  TYPE n,
+        ls_indcatortxt TYPE string,
+        li_cell        TYPE i,
+        n_row          TYPE i,
+        p_num(20)      TYPE c.
+  DATA:col_hj TYPE i.
+*XML
+  TYPE-POOLS: ixml.
+  DATA l_doc  TYPE REF TO if_ixml_document.
+  DATA l_ixml TYPE REF TO if_ixml.
+  DATA l_root TYPE REF TO if_ixml_element.
+  TYPES: BEGIN OF ty_style,
+           ssid          TYPE string,    "STYLE ID
+           ssname(10)    TYPE c,         "STYLE NAME
+           alignment_hor TYPE string,    "ALIGNMENT HOR
+           alignment_ver TYPE string,    "ALIGNMENT VER
+           border        TYPE i,         "BORDER   0 NO 1 YES
+           font_name     TYPE string,    "FONT NAME
+           font_size     TYPE string,    "FONT SIZE EXAMPLEE 12PT
+           font_charset  TYPE string,    "FONT CHAR SET DEFAULT 134
+           number_format TYPE string,    "NUMBER FORMAT
+           wrap_text     TYPE string,    "WRAP TEXT
+           bold          TYPE string,    " BOLD
+         END OF ty_style.
+
+  TYPES: BEGIN OF ty_column,
+           width   TYPE string,
+           span    TYPE string,
+           afwidth TYPE string,
+         END OF ty_column.
+
+  TYPES: BEGIN OF ty_cell,
+           line        TYPE i,
+           cell        TYPE i,
+           line_height TYPE string,
+           line_afh    TYPE string,
+           mergeacross TYPE string,
+           mergedown   TYPE string,
+           value       TYPE string,
+           style_id    TYPE string,
+           d_type      TYPE i,       "0 STRING 1 NUMBER 2 DATETIME
+         END OF ty_cell.
+
+  TYPES: ty_t_styles  TYPE STANDARD TABLE OF ty_style.
+  TYPES: ty_t_columns TYPE STANDARD TABLE OF ty_column.
+  TYPES: ty_t_cells   TYPE STANDARD TABLE OF ty_cell.
+
+  DATA wt_styles   TYPE ty_t_styles.
+  DATA wt_columns  TYPE ty_t_columns.
+  DATA wt_cells    TYPE ty_t_cells.
+  DATA w_fname     TYPE rlgrap-filename.
+
+  DATA pt2_columns TYPE ty_t_columns.
+  DATA pt2_cells   TYPE ty_t_cells.
+  DATA orgeh_stext LIKE p1000-stext.
+
+  DATA: orgtx_all TYPE string.
+  DATA  lc_trans  TYPE string.
+
+  DATA t_pos LIKE TABLE OF struc.
+  DATA w_pos LIKE struc.
+
+  DATA b_month(2) TYPE c .
+  DATA b_year(4) TYPE c.
+  CONSTANTS:
+    cs_path(6) VALUE 'C:\HR\',
+    co_objid   TYPE wwwdatatab-objid VALUE 'ZHRPY001'.
+  FORM handle_user_command1  USING e_ucomm.
+    CASE e_ucomm.
+      WHEN 'EXCEL'.
+        PERFORM excel_out.
+      WHEN OTHERS.
+    ENDCASE.
+  ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  EXCEL_OUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+  FORM excel_out .
+    PERFORM frm_create_document CHANGING  l_doc .
+    PERFORM frm_create_root USING l_doc CHANGING l_root.
+    PERFORM frm_create_styles_table TABLES wt_styles .
+    PERFORM frm_create_styles TABLES wt_styles USING l_doc l_root.
+
+    PERFORM frm_create_sheet_static2 TABLES wt_columns wt_cells .
+    PERFORM frm_write_sheet TABLES wt_cells wt_columns USING '工资明细表'  l_doc l_root.
+*
+*  PERFORM FRM_CREATE_SHEET_STATIC3 TABLES WT_COLUMNS WT_CELLS .
+*  PERFORM FRM_WRITE_SHEET TABLES WT_CELLS WT_COLUMNS USING '奖金汇总表'  L_DOC L_ROOT.
+    PERFORM frm_down_xml USING l_doc w_fname.
+  ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  FRM_CREATE_DOCUMENT
+*----------------------------------------------------------------------*
+  FORM frm_create_document  CHANGING p_doc TYPE REF TO if_ixml_document.
+    l_ixml = cl_ixml=>create( ).
+    p_doc = l_ixml->create_document( ).
+  ENDFORM.                    " FRM_CREATE_DOCUMENT
+*&---------------------------------------------------------------------*
+*&      Form  FRM_CREATE_ROOT
+*&---------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+  FORM frm_create_root  USING p_doc TYPE REF TO if_ixml_document CHANGING p_elem TYPE REF TO if_ixml_element.
+    DATA: idx TYPE i.
+    p_elem = p_doc->create_simple_element( name = 'Workbook'
+                                           parent = p_doc ).
+
+    idx = p_elem->set_attribute( name = 'xmlns' value = 'urn:schemas-microsoft-com:office:spreadsheet' ).
+    idx = p_elem->set_attribute( name = 'xmlns:o' value = 'urn:schemas-microsoft-com:office:office' ).
+    idx = p_elem->set_attribute( name = 'xmlns:x' value = 'urn:schemas-microsoft-com:office:excel' ).
+    idx = p_elem->set_attribute( name = 'xmlns:ss' value = 'urn:schemas-microsoft-com:office:spreadsheet' ).
+    idx = p_elem->set_attribute( name = 'xmlns:html' value = 'http://www.w3.org/TR/REC-html40' ).
+  ENDFORM.                    " FRM_CREATE_ROOT
+*&---------------------------------------------------------------------*
+*&      Form  FRM_CREATE_STYLES_TABLE
+*&---------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+  FORM frm_create_styles_table  TABLES   pt_styles TYPE ty_t_styles.
+    DATA: wa_style TYPE ty_style.
+
+    REFRESH pt_styles.
+    wa_style-ssid = 'S01'.
+    wa_style-alignment_hor = 'Center'.
+    wa_style-alignment_ver = 'Center'.
+    wa_style-border = 0."边框
+    wa_style-font_name = '宋体'.
+    wa_style-font_size = 16.
+    wa_style-font_charset = 134.
+    wa_style-number_format = ''.
+    wa_style-wrap_text = 0.
+    wa_style-bold = 1."粗体
+    APPEND wa_style TO pt_styles.
+
+    wa_style-ssid = 'S02'.
+    wa_style-alignment_hor = 'Center'.
+    wa_style-alignment_ver = 'Center'.
+    wa_style-border = 1.
+    wa_style-font_name = '宋体'.
+    wa_style-font_size = 12.
+    wa_style-font_charset = 134.
+    wa_style-number_format = ''.
+    wa_style-wrap_text = 1.
+    wa_style-bold = 1.
+    APPEND wa_style TO pt_styles.
+
+    wa_style-ssid = 'S03'.
+    wa_style-alignment_hor = 'Center'.
+    wa_style-alignment_ver = 'Center'.
+    wa_style-border = 0.
+    wa_style-font_name = '宋体'.
+    wa_style-font_size = 10.
+    wa_style-font_charset = 134.
+    wa_style-number_format = ''.
+    wa_style-wrap_text = 1."自动换行
+    wa_style-bold = 0.
+    APPEND wa_style TO pt_styles.
+
+    wa_style-ssid = 'S04'.
+*    wa_style-alignment_hor = 'Center'.
+*    wa_style-alignment_ver = 'Center'.
+    wa_style-border = 1.
+    wa_style-font_name = '宋体'.
+    wa_style-font_size = 10.
+    wa_style-font_charset = 134.
+    wa_style-number_format = ''.
+    wa_style-wrap_text = 1.
+    wa_style-bold = 0.
+    APPEND wa_style TO pt_styles.
+  ENDFORM.                    " FRM_CREATE_STYLES_TABLE
+*&---------------------------------------------------------------------*
+*&      Form  FRM_CREATE_STYLES
+*&---------------------------------------------------------------------*
+**----------------------------------------------------------------------*
+  FORM frm_create_styles  TABLES   pt_styles TYPE ty_t_styles
+                         USING p_doc TYPE REF TO if_ixml_document
+                               p_parent TYPE REF TO if_ixml_element.
+    DATA: wa_style    TYPE ty_style,
+          idx         TYPE i,
+          l_styles    TYPE REF TO if_ixml_element,
+          l_borders   TYPE REF TO if_ixml_element,
+          l_border    TYPE REF TO if_ixml_element,
+          l_align     TYPE REF TO if_ixml_element,
+          l_font      TYPE REF TO if_ixml_element,
+          l_numformat TYPE REF TO if_ixml_element,
+          l_style     TYPE REF TO if_ixml_element.
+
+    l_styles = p_doc->create_simple_element( name = 'Styles' parent = p_parent ).
+
+    LOOP AT pt_styles INTO wa_style.
+      CONDENSE: wa_style-ssid,
+                          wa_style-alignment_hor,
+                          wa_style-alignment_ver,
+                          wa_style-wrap_text,
+                          wa_style-font_charset,
+                          wa_style-font_size,
+                          wa_style-font_name,
+                          wa_style-number_format,
+                          wa_style-bold.
+
+      l_style = p_doc->create_simple_element( name = 'Style' parent = l_styles ).
+      idx = l_style->set_attribute( name = 'ss:ID' value = wa_style-ssid ).
+
+
+      l_align = p_doc->create_simple_element( name = 'Alignment' parent = l_style ).
+      idx = l_align->set_attribute( name = 'ss:Vertical' value = wa_style-alignment_ver ).
+      idx = l_align->set_attribute( name = 'ss:Horizontal' value = wa_style-alignment_hor ).
+      idx = l_align->set_attribute( name = 'ss:WrapText' value = wa_style-wrap_text ).
+
+      CASE wa_style-border.
+        WHEN 1.
+          l_borders = p_doc->create_simple_element( name = 'Borders' parent = l_style ).
+          l_border = p_doc->create_simple_element( name = 'Border' parent = l_borders ).
+          idx = l_border->set_attribute( name = 'ss:Position' value = 'Bottom' ).
+          idx = l_border->set_attribute( name = 'ss:LineStyle' value = 'Continuous' ).
+          idx = l_border->set_attribute( name = 'ss:Weight' value = '1' ).
+
+          l_border = p_doc->create_simple_element( name = 'Border' parent = l_borders ).
+          idx = l_border->set_attribute( name = 'ss:Position' value = 'Left' ).
+          idx = l_border->set_attribute( name = 'ss:LineStyle' value = 'Continuous' ).
+          idx = l_border->set_attribute( name = 'ss:Weight' value = '1' ).
+
+          l_border = p_doc->create_simple_element( name = 'Border' parent = l_borders ).
+          idx = l_border->set_attribute( name = 'ss:Position' value = 'Right' ).
+          idx = l_border->set_attribute( name = 'ss:LineStyle' value = 'Continuous' ).
+          idx = l_border->set_attribute( name = 'ss:Weight' value = '1' ).
+
+          l_border = p_doc->create_simple_element( name = 'Border' parent = l_borders ).
+          idx = l_border->set_attribute( name = 'ss:Position' value = 'Top' ).
+          idx = l_border->set_attribute( name = 'ss:LineStyle' value = 'Continuous' ).
+          idx = l_border->set_attribute( name = 'ss:Weight' value = '1' ).
+
+
+        WHEN 2.
+          l_borders = p_doc->create_simple_element( name = 'Borders' parent = l_style ).
+          l_border = p_doc->create_simple_element( name = 'Border' parent = l_borders ).
+          idx = l_border->set_attribute( name = 'ss:Position' value = 'Bottom' ).
+          idx = l_border->set_attribute( name = 'ss:LineStyle' value = 'Continuous' ).
+          idx = l_border->set_attribute( name = 'ss:Weight' value = '1' ).
+
+          l_border = p_doc->create_simple_element( name = 'Border' parent = l_borders ).
+          idx = l_border->set_attribute( name = 'ss:Position' value = 'Left' ).
+          idx = l_border->set_attribute( name = 'ss:LineStyle' value = 'Continuous' ).
+          idx = l_border->set_attribute( name = 'ss:Weight' value = '1' ).
+
+          l_border = p_doc->create_simple_element( name = 'Border' parent = l_borders ).
+          idx = l_border->set_attribute( name = 'ss:Position' value = 'Right' ).
+          idx = l_border->set_attribute( name = 'ss:LineStyle' value = 'Continuous' ).
+          idx = l_border->set_attribute( name = 'ss:Weight' value = '1' ).
+
+          l_border = p_doc->create_simple_element( name = 'Border' parent = l_borders ).
+          idx = l_border->set_attribute( name = 'ss:Position' value = 'Top' ).
+          idx = l_border->set_attribute( name = 'ss:LineStyle' value = 'Continuous' ).
+          idx = l_border->set_attribute( name = 'ss:Weight' value = '1' ).
+
+          l_border = p_doc->create_simple_element( name = 'Border' parent = l_borders ).
+          idx = l_border->set_attribute( name = 'ss:Position' value = 'DiagonalLeft' ).
+          idx = l_border->set_attribute( name = 'ss:LineStyle' value = 'Continuous' ).
+          idx = l_border->set_attribute( name = 'ss:Weight' value = '1' ).
+        WHEN OTHERS.
+      ENDCASE.
+
+      l_font = p_doc->create_simple_element( name = 'Font' parent = l_style ).
+      idx = l_font->set_attribute( name = 'ss:FontName' value = wa_style-font_name ).
+      idx = l_font->set_attribute( name = 'x:CharSet' value = wa_style-font_charset ).
+      idx = l_font->set_attribute( name = 'ss:Bold' value = wa_style-bold ).
+      idx = l_font->set_attribute( name = 'ss:Size' value = wa_style-font_size ).
+    ENDLOOP.
+  ENDFORM.                    " FRM_CREATE_STYLES
+*&---------------------------------------------------------------------*
+*&      FORM  FRM_CREATE_SHEET_STATIC2
+*&---------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+  FORM frm_create_sheet_static2  TABLES pt_columns TYPE ty_t_columns
+                               pt_cells TYPE ty_t_cells.
+    DATA mysfgz TYPE string.
+    DATA myjjze TYPE string.
+    DATA l_flag TYPE c.
+    CLEAR l_flag.
+    REFRESH: pt_columns,pt2_columns.
+    REFRESH: pt_cells,pt2_cells.
+    DATA:ls_fieldcat TYPE lvc_s_fcat.
+
+    DATA:werks_txt(10),g_header TYPE string,year(4),num TYPE string,text TYPE string,line TYPE i.
+*APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+    LOOP AT gt_fieldcat1 INTO ls_fieldcat WHERE (  no_out = '' ).
+      num = num + 1.
+    ENDLOOP.
+    DO num TIMES.
+      IF sy-index = 5.
+        PERFORM set_width USING '110' '0' '0'.
+      ELSE.
+        PERFORM set_width USING '90' '0' '0'.
+      ENDIF.
+
+    ENDDO.
+    num = num - 1.
+    CONDENSE num .
+
+
+
+    SELECT SINGLE stext INTO danwei FROM hrp1000 WHERE objid = p_objid AND otype = 'O' AND plvar = '01'.
+
+    "参数1：行数，2：列数，3：行高，5：合并多少单元格
+    CLEAR li_row."
+    li_row = 1.
+    PERFORM set_cell USING li_row '1' '28' '0' '2' '0' '北京顺鑫控股集团有限公司' 'S01' '0'.
+    li_row = li_row + 1.
+    PERFORM set_cell USING li_row '1' '28' '0' num '0' '工资明细表' 'S01' '0'.
+    li_row = li_row + 1.
+    PERFORM set_cell USING li_row '1' '14' '0' '0' '0' '单位：' 'S03' '0'.
+    PERFORM set_cell USING li_row '2' '14' '0' '2' '0' danwei 'S03' '0'.
+*    line = num. CONCATENATE sy-datum+0(4) '年' sy-datum+4(2) '月' sy-datum+6(2) '日' INTO g_header.
+    line = num. CONCATENATE G_BEGDA+0(4) '年' G_BEGDA+4(2) '月' '工资表' INTO g_header.
+    PERFORM set_cell USING li_row line '14' '0' '1' '0' g_header 'S03' '0'.
+
+    li_row = li_row + 1.CLEAR line.
+    LOOP AT gt_fieldcat1 INTO ls_fieldcat WHERE no_out <> 'X'.
+      text = ls_fieldcat-scrtext_l.CONDENSE text. line = line + 1.
+      PERFORM set_cell USING li_row line '30' '0' '0' '0' text 'S02' '0'.
+    ENDLOOP.
+
+    DATA:wa_new_line  TYPE REF TO data.
+    CREATE DATA wa_new_line LIKE LINE OF <dyn_table>.  " 建立一个与动态内表结构相同的数据对象，且数据对象为是一个结构
+    ASSIGN wa_new_line->* TO <dyn_wa>." 用<dyn_wa>指针指向该结构
+    FIELD-SYMBOLS:<field>  TYPE  any, <field1> TYPE any.
+
+
+*********************处理合计******************
+    IF heji <> 1.
+      DATA:shu(10).
+      LOOP AT gt_title_data.
+        LOOP AT gt_betrg1 WHERE zgzxmbm = gt_title_data-lgart.
+          gt_title_data-betrg = gt_betrg1-betrg + gt_title_data-betrg.
+        ENDLOOP.
+        MODIFY gt_title_data.CLEAR gt_title_data.
+      ENDLOOP.
+      DO 100 TIMES.
+        READ TABLE gt_title_data INDEX sy-index.
+        IF sy-subrc = 0.
+          CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+            EXPORTING
+              input  = gt_title_data-num1
+            IMPORTING
+              output = gt_title_data-num1.
+          shu = gt_title_data-num1. CONDENSE shu.
+          CONCATENATE 'COL' shu INTO shu. CONDENSE shu.
+          ASSIGN COMPONENT shu OF STRUCTURE <dyn_wa> TO <dyn_field>.
+          <dyn_field> = gt_title_data-betrg.
+        ENDIF.
+      ENDDO.
+      LOOP AT gt_mian_data.
+        ASSIGN COMPONENT 'RT559' OF STRUCTURE <dyn_wa> TO <dyn_field>.
+        <dyn_field> = gt_mian_data-rt559 + <dyn_field>.
+        ASSIGN COMPONENT 'RT101' OF STRUCTURE <dyn_wa> TO <dyn_field>.
+        <dyn_field> = gt_mian_data-rt101 + <dyn_field>.
+        ASSIGN COMPONENT 1 OF STRUCTURE <dyn_wa> TO <dyn_field>.
+        <dyn_field> = '合计'.
+      ENDLOOP.
+      APPEND <dyn_wa> TO <dyn_table>.
+      heji = 1.
+    ENDIF.
+*********************处理合计******************
+
+
+    LOOP AT <dyn_table> INTO <dyn_wa> .
+      CLEAR li_cell.
+      li_row = li_row + 1.
+
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 1 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 2 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 3 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      IF lc_trans = '00000000'.
+        CLEAR lc_trans.
+        PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      ELSE.
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+          EXPORTING
+            input  = lc_trans
+          IMPORTING
+            output = lc_trans.
+        PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      ENDIF.
+
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 4 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 5 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 6 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 7 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 8 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 9 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 10 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 11 OF STRUCTURE <dyn_wa> TO <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+
+
+      LOOP AT gt_fieldcat1 INTO ls_fieldcat WHERE no_out <> 'X' AND fieldname+0(3) = 'ORG'.
+        li_cell = li_cell + 1.
+        ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <field>."CONDENSE <field>.
+        lc_trans = <field>.
+        PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      ENDLOOP.
+*      li_cell = li_cell + 1.     "核算范围
+*      ASSIGN COMPONENT 12 OF STRUCTURE <dyn_wa> TO <field>.
+*      lc_trans = <field>.
+*      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+*      li_cell = li_cell + 1.     "核算范围
+*      ASSIGN COMPONENT 13 OF STRUCTURE <dyn_wa> TO <field>.
+*      lc_trans = <field>.
+*      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+*      li_cell = li_cell + 1.     "核算范围
+*      ASSIGN COMPONENT 14 OF STRUCTURE <dyn_wa> TO <field>.
+*      lc_trans = <field>.
+*      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 17 OF STRUCTURE <dyn_wa> TO <field>. "CONDENSE <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      li_cell = li_cell + 1.     "核算范围
+      ASSIGN COMPONENT 18 OF STRUCTURE <dyn_wa> TO <field>."CONDENSE <field>.
+      lc_trans = <field>.
+      PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+
+      LOOP AT gt_fieldcat1 INTO ls_fieldcat WHERE no_out <> 'X' AND fieldname+0(3) = 'COL'.
+        li_cell = li_cell + 1.
+        ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <field>."CONDENSE <field>.
+        lc_trans = <field>.
+        PERFORM set_cell USING li_row li_cell '16' '0' '0' '0' lc_trans 'S04' '0'.
+      ENDLOOP.
+    ENDLOOP.
+    pt_columns[] = pt2_columns[].
+    pt_cells[] = pt2_cells[].
+    CLEAR:li_row,li_cell.
+  ENDFORM.                    " FRM_CREATE_SHEET_STATIC2
+*&---------------------------------------------------------------------*
+*&      Form  FRM_WRITE_SHEET
+*&---------------------------------------------------------------------*
+*----------------------------------------------------------------------*
+  FORM frm_write_sheet  TABLES pt_cells TYPE ty_t_cells
+                             pt_column TYPE ty_t_columns
+                       USING p_sheetname
+                             p_doc TYPE REF TO if_ixml_document
+                             p_parent TYPE REF TO if_ixml_element.
+
+    DATA: wa_cell     TYPE ty_cell,
+          wa_cell_tmp TYPE ty_cell,
+          wa_column   TYPE ty_column.
+    DATA: l_sheet            TYPE REF TO if_ixml_element,
+          l_table            TYPE REF TO if_ixml_element,
+          l_column           TYPE REF TO if_ixml_element,
+          l_cell             TYPE REF TO if_ixml_element,
+          l_data             TYPE REF TO if_ixml_element,
+          l_worksheetoptions TYPE REF TO if_ixml_element,
+          l_nogrid           TYPE REF TO if_ixml_element,
+          l_row              TYPE REF TO if_ixml_element.
+    DATA: idx TYPE i.
+    DATA: ws_line TYPE string,
+          ws_cell TYPE string.
+
+    l_sheet = p_doc->create_simple_element( name = 'Worksheet' parent = p_parent ).
+    idx = l_sheet->set_attribute( name = 'ss:Name' value = p_sheetname ).
+
+    l_worksheetoptions = p_doc->create_simple_element( name = 'WorksheetOptions' parent = l_sheet ).
+    idx = l_worksheetoptions->set_attribute( name = 'xmlns' value = 'urn:schemas-microsoft-com:office:excel' ).
+
+    l_nogrid = p_doc->create_simple_element( name = 'DisplayGridlines' parent = l_worksheetoptions ).
+
+    l_table = p_doc->create_simple_element( name = 'Table' parent = l_sheet ).
+
+    LOOP AT pt_column INTO wa_column.
+
+      CONDENSE: wa_column-afwidth,
+                          wa_column-width,
+                          wa_column-span NO-GAPS.
+
+      l_column = p_doc->create_simple_element( name = 'Column' parent = l_table ).
+
+      idx = l_column->set_attribute( name = 'ss:AutoFitWidth' value = wa_column-afwidth ).
+
+      idx = l_column->set_attribute( name = 'ss:Width' value = wa_column-width ).
+
+      IF wa_column-span NE 0.
+        idx = l_column->set_attribute( name = 'ss:Span' value = wa_column-span ).
+      ENDIF.
+
+    ENDLOOP.
+
+    SORT pt_cells BY line cell.
+
+    LOOP AT pt_cells INTO wa_cell.
+      CONDENSE: wa_cell-line_height,
+                          wa_cell-line_afh,
+                          wa_cell-style_id,
+                          wa_cell-mergeacross,
+                          wa_cell-mergedown NO-GAPS.
+
+      MOVE-CORRESPONDING wa_cell TO  wa_cell_tmp.
+      ws_line = wa_cell_tmp-line.
+      ws_cell = wa_cell_tmp-cell.
+      CONDENSE ws_line NO-GAPS.
+      CONDENSE ws_cell NO-GAPS.
+      AT NEW line.
+        l_row = p_doc->create_simple_element( name = 'Row' parent = l_table ).
+        idx = l_row->set_attribute( name = 'ss:AutoFitHeight' value = wa_cell_tmp-line_afh ).
+        idx = l_row->set_attribute( name = 'ss:Height' value = wa_cell_tmp-line_height ).
+        idx = l_row->set_attribute( name = 'ss:Index' value = ws_line ).
+      ENDAT.
+
+      l_cell = p_doc->create_simple_element( name = 'Cell' parent = l_row ).
+      idx = l_cell->set_attribute( name = 'ss:StyleID' value = wa_cell-style_id ).
+      idx = l_cell->set_attribute( name = 'ss:Index' value = ws_cell ).
+      IF wa_cell-mergeacross NE 0.
+        idx = l_cell->set_attribute( name = 'ss:MergeAcross' value = wa_cell-mergeacross ).
+      ENDIF.
+
+      IF wa_cell-mergedown NE 0.
+        idx = l_cell->set_attribute( name = 'ss:MergeDown' value = wa_cell-mergedown ).
+      ENDIF.
+
+      IF wa_cell-value IS NOT INITIAL.
+        l_data = p_doc->create_simple_element( name = 'Data'  value = wa_cell-value  parent = l_cell ).
+*      IDX = L_DATA->SET_ATTRIBUTE( NAME = 'ss:Type' VALUE = 'String' ).
+        CASE wa_cell-d_type.
+          WHEN 0.
+            idx = l_data->set_attribute( name = 'ss:Type' value = 'String' ).
+          WHEN 1.
+            idx = l_data->set_attribute( name = 'ss:Type' value = 'Number' ).
+          WHEN 2.
+            idx = l_data->set_attribute( name = 'ss:Type' value = 'DateTime' ).
+          WHEN OTHERS.
+        ENDCASE.
+      ENDIF.
+    ENDLOOP.
+  ENDFORM.                    " FRM_WRITE_SHEET
+*&---------------------------------------------------------------------*
+*&      Form  FRM_DOWN_XML
+*&---------------------------------------------------------------------*
+  FORM frm_down_xml  USING   p_doc TYPE REF TO if_ixml_document
+                     p_filename TYPE rlgrap-filename.
+    TYPES: BEGIN OF xml_line,
+             data(256) TYPE x,
+           END OF xml_line.
+
+    DATA: xml_table TYPE STANDARD TABLE OF xml_line.
+    DATA:  l_ostream        TYPE REF TO if_ixml_ostream,
+           l_pstreamfactory TYPE REF TO if_ixml_stream_factory.
+    DATA: xml_size TYPE i.
+
+    l_pstreamfactory = l_ixml->create_stream_factory( ).
+
+    l_ostream = l_pstreamfactory->create_ostream_itable( xml_table ).
+
+    REFRESH xml_table.
+    CALL METHOD p_doc->render( ostream = l_ostream recursive = 'X' ).
+
+    xml_size = l_ostream->get_num_written_raw( ).
+
+
+    CONCATENATE cs_path co_objid '-' sy-datum sy-uzeit '.XLS' INTO p_filename.
+    CONDENSE p_filename NO-GAPS.
+    CALL FUNCTION 'WS_DOWNLOAD'
+      EXPORTING
+        bin_filesize = xml_size
+        filename     = p_filename
+        filetype     = 'BIN'
+      TABLES
+        data_tab     = xml_table.
+
+    DATA p_filename2 TYPE string.
+    p_filename2 = p_filename.
+*    CALL METHOD cl_gui_frontend_services=>execute
+*      EXPORTING
+*        document = p_filename2.
+    CALL METHOD cl_gui_frontend_services=>execute
+      EXPORTING
+        document               = p_filename2
+*       application            =
+*       parameter              =
+*       default_directory      =
+*       maximized              =
+*       minimized              =
+*       synchronous            =
+*       operation              = 'OPEN'
+      EXCEPTIONS
+        cntl_error             = 1
+        error_no_gui           = 2
+        bad_parameter          = 3
+        file_not_found         = 4
+        path_not_found         = 5
+        file_extension_unknown = 6
+        error_execute_failed   = 7
+        synchronous_failed     = 8
+        not_supported_by_gui   = 9
+        OTHERS                 = 10.
+    IF sy-subrc <> 0.
+*                 Implement suitable error handling here
+    ENDIF.
+******************************选择文件路径******************************
+*    DATA:path TYPE string.
+*    CALL METHOD cl_gui_frontend_services=>directory_browse
+**  EXPORTING
+**    WINDOW_TITLE         =
+**    INITIAL_FOLDER       =
+*      CHANGING
+*        selected_folder = path
+**  EXCEPTIONS
+**       CNTL_ERROR      = 1
+**       ERROR_NO_GUI    = 2
+**       NOT_SUPPORTED_BY_GUI = 3
+**       others          = 4
+*      .
+*    IF sy-subrc <> 0.
+*      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*                 WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+*    ENDIF.
+*
+*    IF path IS NOT INITIAL.
+*      CONCATENATE path '\' co_objid '-' sy-datum  '.XLS' INTO p_filename.  "SY-UZEIT
+*      CONDENSE p_filename NO-GAPS.
+*
+*      CALL FUNCTION 'WS_DOWNLOAD'
+*        EXPORTING
+*          bin_filesize            = xml_size
+**         CODEPAGE                = ' '
+*          filename                = p_filename
+*          filetype                = 'BIN'
+*        TABLES
+*          data_tab                = xml_table
+*        EXCEPTIONS
+*          file_open_error         = 1
+*          file_write_error        = 2
+*          invalid_filesize        = 3
+*          invalid_type            = 4
+*          no_batch                = 5
+*          unknown_error           = 6
+*          invalid_table_width     = 7
+*          gui_refuse_filetransfer = 8
+*          customer_error          = 9
+*          no_authority            = 10
+*          OTHERS                  = 11.
+*      IF sy-subrc <> 0.
+** Implement suitable error handling here
+**      MESSAGE '请允许继续操作' TYPE 'E'.
+**        MESSAGE e398(00) WITH '请允许继续操作'.
+*      ENDIF.
+*      DATA p_filename2 TYPE string.
+*      p_filename2 = p_filename.
+*      CALL METHOD cl_gui_frontend_services=>execute
+*        EXPORTING
+*          document = p_filename2.
+*    ELSE.
+*      MESSAGE '请选择保存路径' TYPE 'E'.
+*    ENDIF.
+******************************选择文件路径******************************
+
+  ENDFORM.                    " FRM_DOWN_XML
+*&---------------------------------------------------------------------*
+*&      Form  SET_CELL
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LI_ROW  text
+*      -->P_0975   text
+*      -->P_0976   text
+*      -->P_0977   text
+*      -->P_0978   text
+*      -->P_0979   text
+*      -->P_G_HEADER  text
+*      -->P_0981   text
+*      -->P_0982   text
+*----------------------------------------------------------------------*
+  FORM set_cell  USING   x_line TYPE i
+                          x_cell TYPE i
+                          x_line_height TYPE string
+                          x_line_afh TYPE string
+                          x_mergeacross TYPE string
+                          x_mergedown TYPE string
+                          x_value TYPE string
+                          x_style_id TYPE string
+                          x_d_type TYPE i.
+    DATA wa_cell TYPE ty_cell.
+
+    wa_cell-line = x_line.     "第几行
+    wa_cell-cell = x_cell.
+    wa_cell-line_height = x_line_height.
+    wa_cell-line_afh = x_line_afh.
+    wa_cell-mergeacross = x_mergeacross.    "合并多少单元格
+    wa_cell-mergedown = x_mergedown.
+    wa_cell-value = x_value.
+    wa_cell-style_id = x_style_id.
+    wa_cell-d_type = x_d_type.
+    APPEND wa_cell TO pt2_cells.
+  ENDFORM.                    " SET_CELL
+*&---------------------------------------------------------------------*
+*&      Form  SET_WIDTH
+*&---------------------------------------------------------------------*
+**----------------------------------------------------------------------*
+  FORM set_width  USING x_width TYPE string
+                         x_span TYPE string
+                         x_afwidth TYPE string.
+    DATA wa_column TYPE ty_column.
+    wa_column-width = x_width.
+    wa_column-span = x_span.
+    wa_column-afwidth = x_afwidth.
+    APPEND wa_column TO pt2_columns.
+  ENDFORM.                    " SET_WIDTH
