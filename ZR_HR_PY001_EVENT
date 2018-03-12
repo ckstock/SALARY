@@ -1,0 +1,115 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZR_HR_PY001_EVENT
+*&---------------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR P_OBJID.
+  PERFORM FRM_SET_SCR USING 'O' 'P_OBJID'.
+
+INITIALIZATION.
+  FUNCTXT-ICON_ID   = ICON_CREATE.
+  FUNCTXT-ICON_TEXT = '维护默认工资项'.
+  SSCRFIELDS-FUNCTXT_02 = FUNCTXT.
+
+AT SELECTION-SCREEN.
+  CASE SSCRFIELDS-UCOMM.
+    WHEN 'FC02'.  "template down
+*      CALL TRANSACTION 'ZSMLGART1'.
+      CLEAR:GT_VIMSELLIST,GW_VIMSELLIST.
+      GW_VIMSELLIST-VIEWFIELD = 'MANDT'.
+      GW_VIMSELLIST-OPERATOR  = 'EQ'.
+      GW_VIMSELLIST-AND_OR    = 'AND'.
+      GW_VIMSELLIST-VALUE     = SY-MANDT.
+      APPEND GW_VIMSELLIST TO GT_VIMSELLIST. CLEAR GW_VIMSELLIST.
+      GW_VIMSELLIST-VIEWFIELD = 'ZABKRS'.
+      GW_VIMSELLIST-OPERATOR  = 'EQ'.
+      GW_VIMSELLIST-AND_OR    = 'AND'.
+      GW_VIMSELLIST-VALUE     = PNPXABKR.
+      APPEND GW_VIMSELLIST TO GT_VIMSELLIST. CLEAR GW_VIMSELLIST.
+      CALL FUNCTION 'VIEW_MAINTENANCE_CALL'
+        EXPORTING
+          ACTION                       = 'U'
+*         CORR_NUMBER                  = '          '
+*         GENERATE_MAINT_TOOL_IF_MISSING       = ' '
+*         SHOW_SELECTION_POPUP         = ' '
+          VIEW_NAME                    = 'ZLGART1'
+*         NO_WARNING_FOR_CLIENTINDEP   = ' '
+*         RFC_DESTINATION_FOR_UPGRADE  = ' '
+*         CLIENT_FOR_UPGRADE           = ' '
+*         VARIANT_FOR_SELECTION        = ' '
+*         COMPLEX_SELCONDS_USED        = ' '
+*         CHECK_DDIC_MAINFLAG          = ' '
+*         SUPPRESS_WA_POPUP            = ' '
+        TABLES
+          DBA_SELLIST                  = GT_VIMSELLIST
+*         EXCL_CUA_FUNCT               =
+        EXCEPTIONS
+          CLIENT_REFERENCE             = 1
+          FOREIGN_LOCK                 = 2
+          INVALID_ACTION               = 3
+          NO_CLIENTINDEPENDENT_AUTH    = 4
+          NO_DATABASE_FUNCTION         = 5
+          NO_EDITOR_FUNCTION           = 6
+          NO_SHOW_AUTH                 = 7
+          NO_TVDIR_ENTRY               = 8
+          NO_UPD_AUTH                  = 9
+          ONLY_SHOW_ALLOWED            = 10
+          SYSTEM_FAILURE               = 11
+          UNKNOWN_FIELD_IN_DBA_SELLIST = 12
+          VIEW_NOT_FOUND               = 13
+          MAINTENANCE_PROHIBITED       = 14
+          OTHERS                       = 15.
+      IF SY-SUBRC <> 0.
+* Implement suitable error handling here
+      ENDIF.
+  ENDCASE.
+
+START-OF-SELECTION.
+
+  AUTHORITY-CHECK OBJECT 'P_PCR'
+           ID 'ABRKS' FIELD PNPXABKR.
+*           ID 'ACTVT' FIELD '__________'.
+  IF SY-SUBRC <> 0.
+* Implement a suitable exception handling here
+    MESSAGE '您没有权限查看此工资核算范围数据' TYPE 'E'.
+    EXIT.
+  ENDIF.
+
+
+  PERFORM CHECK_OBJID.
+
+  IF P_OBJID IS NOT INITIAL.
+    PERFORM FRM_GET_OBJID.      "组织单位下的数据
+  ENDIF.
+
+  SELECT SINGLE ATEXT INTO HSFW FROM T549T WHERE ABKRS = PNPXABKR AND SPRSL = 1.
+
+  PERFORM GT_TITLE_DATA.
+
+**************2015年11月17日修改
+  IF PNPPERNR[] IS INITIAL.
+  SELECT PERNR ABKRS INTO CORRESPONDING FIELDS OF TABLE LT_ABKRS
+    FROM PA0001 WHERE ABKRS = PNPXABKR.
+  SORT LT_ABKRS BY PERNR.
+  DELETE ADJACENT DUPLICATES FROM LT_ABKRS COMPARING PERNR.
+  LOOP AT LT_ABKRS.
+    PNPPERNR-SIGN = 'I'.
+    PNPPERNR-OPTION = 'EQ'.
+    PNPPERNR-LOW = LT_ABKRS-PERNR.
+    APPEND PNPPERNR. CLEAR PNPPERNR.
+  ENDLOOP.
+  ENDIF.
+**************2015年11月17日修改
+
+  GET PERNR.
+
+  PERFORM GT_MAIN_DATA.
+
+END-OF-SELECTION.
+
+  IF GT_MIAN_DATA[] IS INITIAL.
+    MESSAGE '没有相关数据' TYPE 'E'.
+    EXIT.
+  ENDIF.
+
+  CALL SCREEN 0100.
+
+  EXIT .
