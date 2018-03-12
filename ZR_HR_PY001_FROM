@@ -1,0 +1,528 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZR_HR_PY001_FROM
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  FRM_SET_SCR
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_0010   text
+*      -->P_0011   text
+*----------------------------------------------------------------------*
+FORM FRM_SET_SCR  USING    U_OTYPE U_FIELDNAME.
+  DATA: DYNPFIELDS_UP LIKE DYNPREAD OCCURS 0 WITH HEADER LINE.
+  DATA: PROGNAME LIKE SY-REPID.
+  DATA: DYNPNUMB LIKE SY-DYNNR.
+  DATA: STEPLOOP LIKE SY-STEPL.
+  DATA : SELF_REPID LIKE SY-REPID .                         "YNKK100992
+  DATA : SELF_DYNNR LIKE SY-DYNNR .                         "YNKK100992
+  DATA : F4_OBJEC   LIKE OBJEC.                            "XMKBCEK002468
+  SELF_REPID = SY-REPID.                                    "YNKK100992
+  SELF_DYNNR = SY-DYNNR.                                    "YNKK100992
+
+  CALL FUNCTION 'RH_OBJID_REQUEST'                       "XMKBCEK002468
+    EXPORTING
+      PLVAR           = '01'
+      OTYPE           = U_OTYPE
+      DYNPRO_REPID    = SELF_REPID
+      DYNPRO_DYNNR    = SELF_DYNNR
+*     dynpro_plvarfield     = 'PPHDR-PLVAR'
+*     dynpro_searkfield     = 'S_EOBJ-LOW'
+    IMPORTING
+      SEL_OBJECT      = F4_OBJEC
+    EXCEPTIONS
+      CANCELLED       = 1
+      WRONG_CONDITION = 2
+      NOTHING_FOUND   = 3
+      ILLEGAL_MODE    = 4
+      INTERNAL_ERROR  = 5
+      OTHERS          = 6.
+  CHECK F4_OBJEC-OBJID IS NOT INITIAL.
+*  get actual position
+  CALL FUNCTION 'DYNP_GET_STEPL'
+    IMPORTING
+      POVSTEPL = STEPLOOP.
+  REFRESH DYNPFIELDS_UP.
+  DYNPFIELDS_UP-STEPL     = STEPLOOP.
+  DYNPFIELDS_UP-FIELDNAME = U_FIELDNAME.
+  DYNPFIELDS_UP-FIELDVALUE = F4_OBJEC-OBJID.
+  APPEND DYNPFIELDS_UP.
+
+*  update table control
+  CALL FUNCTION 'DYNP_VALUES_UPDATE'
+    EXPORTING
+      DYNAME               = PROGNAME
+      DYNUMB               = DYNPNUMB
+    TABLES
+      DYNPFIELDS           = DYNPFIELDS_UP
+    EXCEPTIONS
+      INVALID_ABAPWORKAREA = 1
+      INVALID_DYNPROFIELD  = 2
+      INVALID_DYNPRONAME   = 3
+      INVALID_DYNPRONUMMER = 4
+      INVALID_REQUEST      = 5
+      NO_FIELDDESCRIPTION  = 6
+      UNDEFIND_ERROR       = 7
+      OTHERS               = 8.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  CHECK_OBJID
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM CHECK_OBJID .
+  IF PNPPABRP IS NOT INITIAL.
+    CONCATENATE PNPPABRJ PNPPABRP '01' INTO G_BEGDA.
+  ELSE.
+    CONCATENATE PNPDISPJ PNPDISPP '01' INTO G_BEGDA.
+  ENDIF.
+  CALL FUNCTION 'DATE_GET_MONTH_LASTDAY'
+    EXPORTING
+      I_DATE = G_BEGDA
+    IMPORTING
+      E_DATE = G_ENDDA.
+
+  G_BEGDA1 = PNPDISBD.  G_ENDDA1 = PNPDISED.
+
+*  IF P_OBJID IS NOT INITIAL.
+*    SELECT SINGLE * FROM HRP1000
+*      WHERE OTYPE = 'O' AND OBJID = P_OBJID AND BEGDA <= G_BEGDA AND ENDDA >= G_ENDDA.
+*    IF SY-SUBRC <> 0.
+*      MESSAGE '输入的组织单位在所选期间里无效!' TYPE 'S' DISPLAY LIKE 'E'.
+*      EXIT.
+*    ENDIF.
+*  ENDIF.
+ENDFORM.                    " CHECK_OBJID
+*&---------------------------------------------------------------------*
+*&      Form  FRM_GET_OBJID
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM FRM_GET_OBJID .
+  REFRESH:IT_RANG,IT_OBJEC."it_result_struc,it_result_tab.
+
+*-- 组织树的读取
+  CALL FUNCTION 'RH_STRUC_GET'
+    EXPORTING
+      ACT_OTYPE      = 'O'
+      ACT_OBJID      = P_OBJID
+      ACT_WEGID      = 'O-O_DOWN'
+      ACT_BEGDA      = G_BEGDA
+      ACT_ENDDA      = G_ENDDA
+    TABLES
+*     result_tab     = it_result_tab
+      RESULT_OBJEC   = IT_OBJEC
+*     result_struc   = it_result_struc
+    EXCEPTIONS
+      NO_PLVAR_FOUND = 1
+      NO_ENTRY_FOUND = 2
+      OTHERS         = 3.
+
+  LOOP AT IT_OBJEC.
+    IT_RANG-SIGN = 'I'.
+    IT_RANG-OPTION = 'EQ'.
+    IT_RANG-LOW = IT_OBJEC-OBJID.
+    APPEND IT_RANG.
+  ENDLOOP.
+ENDFORM.                    " FRM_GET_OBJID
+*&---------------------------------------------------------------------*
+*&      Form  GT_TITLE_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GT_TITLE_DATA .
+  SELECT * INTO CORRESPONDING FIELDS OF TABLE LT_ZLGART1 FROM ZLGART1 WHERE ZABKRS = PNPXABKR.
+  SELECT * INTO CORRESPONDING FIELDS OF TABLE LT_ZLGART  FROM ZLGART WHERE ZABKRS = PNPXABKR.
+  SORT LT_ZLGART BY ZNUM.SORT LT_ZLGART1 BY ZNUM.
+
+  LOOP AT LT_ZLGART.
+    GT_TITLE_DATA-NUM   = LT_ZLGART-ZNUM.
+    GT_TITLE_DATA-LGART = LT_ZLGART-ZGZXMBM.
+    GT_TITLE_DATA-LGTXT = LT_ZLGART-ZGZXMWB.
+*    gt_title_data-checkbox = lt_zlgart-zflag2.
+    APPEND GT_TITLE_DATA.CLEAR GT_TITLE_DATA.
+
+    GT_BETRG-ZGZXMBM = LT_ZLGART-ZGZXMBM.
+    GT_BETRG-ZGZXMWB = LT_ZLGART-ZGZXMWB.
+    APPEND GT_BETRG.CLEAR GT_BETRG.
+  ENDLOOP.
+
+  SORT LT_ZLGART1 BY ZGZXMBM .
+  IF LT_ZLGART1[] IS NOT INITIAL.
+    LOOP AT GT_TITLE_DATA.
+      READ TABLE LT_ZLGART1 WITH KEY ZGZXMBM = GT_TITLE_DATA-LGART BINARY SEARCH..
+      IF SY-SUBRC = 0.
+        GT_TITLE_DATA-CHECKBOX = LT_ZLGART1-ZFLAG1.
+        MODIFY GT_TITLE_DATA.CLEAR GT_TITLE_DATA.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+  SORT GT_TITLE_DATA BY LGART.
+  DELETE ADJACENT DUPLICATES FROM GT_TITLE_DATA.
+  SORT GT_TITLE_DATA BY NUM.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  GT_MAIN_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GT_MAIN_DATA .
+**--组织单位的查看
+  IF P_OBJID IS NOT INITIAL.
+  RP_PROVIDE_FROM_LAST P0001 SPACE PNPDISBD PNPDISBD.
+  CHECK P0001-ORGEH IN IT_RANG.
+  ENDIF.
+**--工资核算范围的查看
+*  LOOP AT p0001 WHERE begda <= pnpdisbd AND endda >= pnpdised.
+*    abkrs = p0001-abkrs.
+*  ENDLOOP.
+*  CHECK abkrs = pnpxabkr.
+  CLEAR:T_RGDIR,T_RGDIR[],ABKRS.
+  CALL FUNCTION 'CU_READ_RGDIR'
+    EXPORTING
+      PERSNR             = PERNR-PERNR
+      NO_AUTHORITY_CHECK = 'X'
+    TABLES
+      IN_RGDIR           = T_RGDIR
+    EXCEPTIONS
+      NO_RECORD_FOUND    = 1
+      OTHERS             = 2.
+  LOOP AT T_RGDIR WHERE FPPER = G_BEGDA+0(6) AND SRTZA = 'A'.
+    ABKRS = T_RGDIR-ABKRS .
+  ENDLOOP.
+  CHECK ABKRS = PNPXABKR.
+**--核算范围
+  GT_MIAN_DATA-HSFW = HSFW.
+**--序号
+*  gt_mian_data-number = sy-tabix.
+**--人员编号
+  GT_MIAN_DATA-PERNR = PERNR-PERNR.
+**--姓名
+  GT_MIAN_DATA-NACHN = P0002-NACHN.
+**--身份证号
+  GT_MIAN_DATA-ICNUM = P0185-ICNUM.
+**-- 银行卡号
+  READ TABLE P0009 WITH KEY BNKSA = 0.
+  GT_MIAN_DATA-BKREF = P0009-BKREF.
+
+**--职务小类  职务大类
+*  SELECT SINGLE sobid INTO sobid  FROM hrp1001
+*    WHERE objid = p0001-stell AND sclas = '01' AND plvar = '01'.
+*  SELECT SINGLE stext INTO gt_mian_data-zhiwx FROM hrp1000
+*    WHERE objid = sobid AND otype = '01'.
+***--职务大类
+*  SELECT SINGLE sobid INTO sobid FROM hrp1001
+*    WHERE objid = sobid AND sclas = '01'AND plvar = '01'.
+*  SELECT SINGLE stext INTO gt_mian_data-zhiwd FROM hrp1000
+*    WHERE objid = sobid AND otype = '01'.
+  CLEAR :ZHIWU_OBJEC,ZHIWU_OBJEC[].
+  CALL FUNCTION 'RH_STRUC_GET'
+    EXPORTING
+      ACT_OTYPE      = 'P'
+      ACT_OBJID      = PERNR-PERNR
+      ACT_WEGID      = 'ZPSC01'
+*     ACT_INT_FLAG   =
+      ACT_PLVAR      = '01'
+      ACT_BEGDA      = PNPDISBD
+      ACT_ENDDA      = PNPDISED
+*     ACT_TDEPTH     = 0
+*     ACT_TFLAG      = 'X'
+*     ACT_VFLAG      = 'X'
+*     AUTHORITY_CHECK        = 'X'
+*     TEXT_BUFFER_FILL       =
+*     BUFFER_MODE    =
+*     IMPORTING
+*     ACT_PLVAR      =
+    TABLES
+*     RESULT_TAB     =
+      RESULT_OBJEC   = ZHIWU_OBJEC
+*     RESULT_STRUC   =
+    EXCEPTIONS
+      NO_PLVAR_FOUND = 1
+      NO_ENTRY_FOUND = 2
+      OTHERS         = 3.
+  IF SY-SUBRC <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+  DELETE ZHIWU_OBJEC WHERE OTYPE NE '01'.
+  READ TABLE ZHIWU_OBJEC INDEX 2.
+  IF SY-SUBRC = 0.
+    GT_MIAN_DATA-ZHIWX = ZHIWU_OBJEC-STEXT.
+  ENDIF.
+  READ TABLE ZHIWU_OBJEC INDEX 4.
+  IF SY-SUBRC = 0.
+    GT_MIAN_DATA-ZHIWD = ZHIWU_OBJEC-STEXT.
+  ENDIF.
+
+**--岗级
+  GT_MIAN_DATA-TRFGR = P0008-TRFGR.
+**--薪挡
+  GT_MIAN_DATA-TRFST = P0008-TRFST.
+**--公司、单位名称、一级部门、二级部门、三级部门、岗位
+  CALL FUNCTION 'ZHR_GET_ORGEH'
+    EXPORTING
+      IN_OBJID     = PERNR-PERNR
+      IN_FLAG1     = 'X'
+      IN_OBJID_XXX = '10000000'
+      IN_DATE_FROM = PNPDISBD
+      IN_DATE_TO   = PNPDISED
+    IMPORTING
+      OUT_STEXT1   = GT_MIAN_DATA-ORG1
+      OUT_STEXT2   = GT_MIAN_DATA-ORG2
+      OUT_STEXT3   = GT_MIAN_DATA-ORG3
+      OUT_STEXT4   = GT_MIAN_DATA-ORG4
+      OUT_STEXT5   = GT_MIAN_DATA-ORG5
+      OUT_GANGWEI  = GT_MIAN_DATA-GANGW.
+**--工资取值/  过度表取值
+  PERFORM GT_RT_DATA.
+
+  APPEND GT_MIAN_DATA. CLEAR GT_MIAN_DATA.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  GT_RT_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM GT_RT_DATA .
+  DATA:P_DATE LIKE SY-DATUM(6).
+*  CALL FUNCTION 'CU_READ_RGDIR'
+*    EXPORTING
+*      persnr             = p0001-pernr
+*      no_authority_check = 'X'
+*    TABLES
+*      in_rgdir           = t_rgdir
+*    EXCEPTIONS
+*      no_record_found    = 1
+*      OTHERS             = 2.
+*  CHECK sy-subrc = 0.
+  P_DATE = G_BEGDA(6).
+
+  LOOP AT T_RGDIR WHERE FPPER = P_DATE ."AND srtza = 'A'.    "从员工薪酬结果表RGDIR中获取符合条件的工作
+*    CHECK t_rgdir-fpend <> t_rgdir-fpbeg  .                    "工资结算的开始日期和结束日期不相等
+    CHECK T_RGDIR-FPPER IS NOT INITIAL.
+    CHECK T_RGDIR-INPER IS NOT INITIAL.
+    IF T_RGDIR-SRTZA = 'A'.
+      G_NUMBER = T_RGDIR-SEQNR.
+      CALL FUNCTION 'PYXX_READ_PAYROLL_RESULT'
+        EXPORTING
+          CLUSTERID                    = 'CN'
+          EMPLOYEENUMBER               = PERNR-PERNR
+          SEQUENCENUMBER               = G_NUMBER
+          CHECK_READ_AUTHORITY         = ''
+        CHANGING
+          PAYROLL_RESULT               = G_RESULT
+        EXCEPTIONS
+          ILLEGAL_ISOCODE_OR_CLUSTERID = 1
+          ERROR_GENERATING_IMPORT      = 2
+          IMPORT_MISMATCH_ERROR        = 3
+          SUBPOOL_DIR_FULL             = 4
+          NO_READ_AUTHORITY            = 5
+          NO_RECORD_FOUND              = 6
+          VERSIONS_DO_NOT_MATCH        = 7
+          ERROR_READING_ARCHIVE        = 8
+          ERROR_READING_RELID          = 9
+          OTHERS                       = 10.
+      CHECK SY-SUBRC = 0.                                    "判断函数是否执行成功
+
+      LOOP AT G_RESULT-INTER-RT INTO LT_RT .
+        CASE LT_RT-LGART.
+          WHEN '/559'.
+            GT_MIAN_DATA-RT559 = ABS( LT_RT-BETRG ).  "实发工资
+          WHEN '/101'.
+            GT_MIAN_DATA-RT101 = ABS( LT_RT-BETRG ).  "应发工资
+          WHEN OTHERS.
+        ENDCASE.
+      ENDLOOP.
+
+      SORT G_RESULT-INTER-RT BY LGART.
+      GT_BETRG2[] = GT_BETRG[].
+      LOOP AT GT_BETRG2 .
+        GT_BETRG2-PERNR = PERNR-PERNR.
+        READ TABLE G_RESULT-INTER-RT INTO LT_RT WITH KEY LGART = GT_BETRG2-ZGZXMBM BINARY SEARCH.
+        IF SY-SUBRC = 0.
+          GT_BETRG2-BETRG = ABS( LT_RT-BETRG ).
+        ENDIF.
+        MODIFY GT_BETRG2.  CLEAR GT_BETRG2.
+      ENDLOOP.
+
+      LOOP AT GT_BETRG2.
+        MOVE-CORRESPONDING GT_BETRG2 TO GT_BETRG1.
+        APPEND GT_BETRG1. CLEAR GT_BETRG1.
+      ENDLOOP.
+      CLEAR:GT_BETRG2,GT_BETRG2[].
+    ELSEIF T_RGDIR-SRTZA = 'P'.
+      IF GT_MIAN_DATA-RT559 IS INITIAL.
+        G_NUMBER = T_RGDIR-SEQNR.
+        CALL FUNCTION 'PYXX_READ_PAYROLL_RESULT'
+          EXPORTING
+            CLUSTERID                    = 'CN'
+            EMPLOYEENUMBER               = P0001-PERNR
+            SEQUENCENUMBER               = G_NUMBER
+            CHECK_READ_AUTHORITY         = ''
+          CHANGING
+            PAYROLL_RESULT               = G_RESULT
+          EXCEPTIONS
+            ILLEGAL_ISOCODE_OR_CLUSTERID = 1
+            ERROR_GENERATING_IMPORT      = 2
+            IMPORT_MISMATCH_ERROR        = 3
+            SUBPOOL_DIR_FULL             = 4
+            NO_READ_AUTHORITY            = 5
+            NO_RECORD_FOUND              = 6
+            VERSIONS_DO_NOT_MATCH        = 7
+            ERROR_READING_ARCHIVE        = 8
+            ERROR_READING_RELID          = 9
+            OTHERS                       = 10.
+        CHECK SY-SUBRC = 0.                                    "判断函数是否执行成功
+        LOOP AT G_RESULT-INTER-RT INTO LT_RT .
+          CASE LT_RT-LGART.
+            WHEN '/559'.
+              GT_MIAN_DATA-RT559 =  ABS( LT_RT-BETRG ).
+          ENDCASE.
+        ENDLOOP.
+      ENDIF.
+    ELSEIF T_RGDIR-SRTZA = 'O'.
+      IF GT_MIAN_DATA-RT559 IS INITIAL.
+        G_NUMBER = T_RGDIR-SEQNR.
+        CALL FUNCTION 'PYXX_READ_PAYROLL_RESULT'
+          EXPORTING
+            CLUSTERID                    = 'CN'
+            EMPLOYEENUMBER               = P0001-PERNR
+            SEQUENCENUMBER               = G_NUMBER
+            CHECK_READ_AUTHORITY         = ''
+          CHANGING
+            PAYROLL_RESULT               = G_RESULT
+          EXCEPTIONS
+            ILLEGAL_ISOCODE_OR_CLUSTERID = 1
+            ERROR_GENERATING_IMPORT      = 2
+            IMPORT_MISMATCH_ERROR        = 3
+            SUBPOOL_DIR_FULL             = 4
+            NO_READ_AUTHORITY            = 5
+            NO_RECORD_FOUND              = 6
+            VERSIONS_DO_NOT_MATCH        = 7
+            ERROR_READING_ARCHIVE        = 8
+            ERROR_READING_RELID          = 9
+            OTHERS                       = 10.
+        CHECK SY-SUBRC = 0.                                    "判断函数是否执行成功
+        LOOP AT G_RESULT-INTER-RT INTO LT_RT .
+          CASE LT_RT-LGART.
+            WHEN '/559'.
+              GT_MIAN_DATA-RT559 =  ABS( LT_RT-BETRG ).
+          ENDCASE.
+        ENDLOOP.
+      ENDIF.
+    ENDIF.
+
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  HANDLE_USER_COMMAND
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_E_UCOMM  text
+*----------------------------------------------------------------------*
+FORM HANDLE_USER_COMMAND  USING E_UCOMM TYPE SY-UCOMM.
+  DATA:WA_NEW_LINE TYPE REF TO DATA.
+  DATA:LS_FIELDCAT TYPE LVC_S_FCAT.
+  CREATE DATA WA_NEW_LINE LIKE LINE OF <DYN_TABLE>.  " 建立一个与动态内表结构相同的数据对象，且数据对象为是一个结构
+  ASSIGN WA_NEW_LINE->* TO <DYN_WA>." 用<dyn_wa>指针指向该结构
+  FIELD-SYMBOLS:<AF1> LIKE LINE OF GT_MIAN_DATA.
+  FIELD-SYMBOLS:<FIELD> TYPE  ANY .
+  DATA:COL1(10),COL(10).
+
+  CASE E_UCOMM.
+    WHEN 'INSERT'.
+      LOOP AT <DYN_TABLE> ASSIGNING <DYN_WA>.
+        ASSIGN COMPONENT 3 OF STRUCTURE <DYN_WA> TO <FIELD>.
+        LOOP AT GT_BETRG1 WHERE PERNR = <FIELD>.
+          IF SY-SUBRC = 0.
+            LOOP AT GT_TITLE_DATA WHERE CHECKBOX = 'X' AND LGART = GT_BETRG1-ZGZXMBM.
+              COL1 = SY-TABIX. CONDENSE COL1.
+              CONCATENATE 'COL' COL1 INTO COL.
+              ASSIGN COMPONENT COL OF STRUCTURE <DYN_WA> TO <DYN_FIELD>.
+              MOVE GT_BETRG1-BETRG TO <DYN_FIELD>.
+            ENDLOOP.
+          ENDIF.
+          CLEAR SY-SUBRC.
+        ENDLOOP.
+      ENDLOOP.
+
+******"控制多次点击计算的时候始终动态列都是不输出的
+      LOOP AT GT_FIELDCAT1 INTO LS_FIELDCAT WHERE FIELDNAME+0(3) = 'COL'.
+        LS_FIELDCAT-NO_OUT = 'X'.
+        MODIFY GT_FIELDCAT1 FROM LS_FIELDCAT.
+      ENDLOOP.
+
+      CLEAR:COL1,COL.
+      LOOP AT GT_TITLE_DATA WHERE CHECKBOX = 'X'.
+        COL1 = SY-TABIX. CONDENSE COL1.
+        CONCATENATE 'COL' COL1 INTO COL.
+        LOOP AT GT_FIELDCAT1 INTO LS_FIELDCAT WHERE FIELDNAME = COL.
+          LS_FIELDCAT-NO_OUT = ''.
+          MODIFY GT_FIELDCAT1 FROM LS_FIELDCAT.
+        ENDLOOP.
+      ENDLOOP.
+
+      CALL METHOD WCL_GRID1->SET_FRONTEND_FIELDCATALOG
+        EXPORTING
+          IT_FIELDCATALOG = GT_FIELDCAT1[].
+
+      CALL METHOD WCL_GRID1->SET_FRONTEND_LAYOUT
+        EXPORTING
+          IS_LAYOUT = GS_LAYOUT.
+
+      CALL METHOD WCL_GRID1->REFRESH_TABLE_DISPLAY.
+    WHEN 'SAVE'.
+*      IF lt_zlgart1[] IS INITIAL.
+*        LOOP AT gt_title_data WHERE checkbox = 'X'.
+*          lt_zlgart1-mandt = sy-mandt.
+*          lt_zlgart1-zabkrs = pnpxabkr.
+*          lt_zlgart1-zgzxmbm = gt_title_data-lgart.
+*          lt_zlgart1-zgzxmwb = gt_title_data-lgtxt.
+*          lt_zlgart1-znum = gt_title_data-num.
+*          lt_zlgart1-zsyuname = sy-uname.
+*          lt_zlgart1-zflag2 = 'X'.
+*          APPEND lt_zlgart1. CLEAR lt_zlgart1.
+*        ENDLOOP.
+*        INSERT zlgart1 FROM TABLE lt_zlgart1.
+*      ELSE.
+*        READ TABLE lt_zlgart1 WITH KEY zsyuname = sy-uname.
+*        IF sy-subrc = 0.
+*          DELETE FROM zlgart1 WHERE zabkrs = pnpxabkr.
+*          CLEAR:lt_zlgart1_1,lt_zlgart1_1[].
+*          LOOP AT gt_title_data WHERE checkbox = 'X'.
+*            lt_zlgart1_1-mandt = sy-mandt.
+*            lt_zlgart1_1-zabkrs = pnpxabkr.
+*            lt_zlgart1_1-zgzxmbm = gt_title_data-lgart.
+*            lt_zlgart1_1-zgzxmwb = gt_title_data-lgtxt.
+*            lt_zlgart1_1-znum = gt_title_data-num.
+*            lt_zlgart1_1-zsyuname = sy-uname.
+*            lt_zlgart1_1-zflag2 = 'X'.
+*            APPEND lt_zlgart1_1. CLEAR lt_zlgart1_1.
+*          ENDLOOP.
+*          INSERT zlgart1 FROM TABLE lt_zlgart1_1.
+*        ELSE.
+*          MESSAGE '你不能修改已经保存的工资项' TYPE 'S' DISPLAY LIKE 'E'.
+*        ENDIF.
+*      ENDIF.
+
+    WHEN OTHERS.
+  ENDCASE.
+ENDFORM.
