@@ -1,0 +1,718 @@
+*&---------------------------------------------------------------------*
+*&  包含                ZR_HR_PY001_ALV
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  SET PF-STATUS 'STATUS_0100'.
+  SET TITLEBAR 'TITLE_0100'.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  ok_code = sy-ucomm. CLEAR sy-ucomm.
+  CASE ok_code.
+    WHEN '&F03' OR '&F15'.
+      LEAVE TO SCREEN 0.
+    WHEN '&F12'.
+      LEAVE PROGRAM.
+    WHEN OTHERS.
+  ENDCASE.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Module  DISPLAY_ALV  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE display_alv OUTPUT.
+  PERFORM display_alv.
+ENDMODULE.
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_ALV
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM display_alv .
+  DATA:ls_fieldcat TYPE lvc_s_fcat,
+       lt_exclude  TYPE ui_functions.
+  DATA:g_variant TYPE disvariant.
+
+  IF wcl_grid IS INITIAL .
+    CREATE OBJECT w_splitter
+      EXPORTING
+        parent  = cl_gui_container=>screen0
+        rows    = 1
+        columns = 2.
+* 分配容器
+    CALL METHOD w_splitter->get_container
+      EXPORTING
+        row       = 1
+        column    = 1
+      RECEIVING
+        container = w_head.
+    CALL METHOD w_splitter->get_container
+      EXPORTING
+        row       = 1
+        column    = 2
+      RECEIVING
+        container = w_body.
+* 设定上边容器初始宽度
+    CALL METHOD w_splitter->set_column_width
+      EXPORTING
+        id    = 1
+        width = 25.
+
+    CREATE OBJECT wcl_grid
+      EXPORTING
+        i_parent = w_head.
+
+    CREATE OBJECT wcl_grid1
+      EXPORTING
+        i_parent = w_body.
+*******"获取字段目录的样式
+    PERFORM prepare_field_catalog USING ls_fieldcat CHANGING gt_fieldcat .
+*******"获取布局的样式
+    PERFORM prepare_layout1 CHANGING gs_layout1.
+*******"隐藏掉一些功能按钮"创建容器
+    PERFORM exclude_functions USING lt_exclude.
+*******”展示ALV
+    CALL METHOD wcl_grid->set_table_for_first_display
+      EXPORTING
+*       I_BUFFER_ACTIVE               =
+*       I_CONSISTENCY_CHECK           =
+*       I_STRUCTURE_NAME              =
+        is_variant                    = g_variant
+        i_save                        = 'A'
+*       i_default                     = 'X'
+        is_layout                     = gs_layout1
+        it_toolbar_excluding          = lt_exclude "隐藏掉一些功能按钮
+      CHANGING
+        it_outtab                     = gt_title_data[]
+        it_fieldcatalog               = gt_fieldcat[]
+      EXCEPTIONS
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        OTHERS                        = 4.
+
+    CREATE OBJECT go_receiver. "创建新增的菜单按钮
+    SET HANDLER go_receiver->handle_user_command FOR wcl_grid."对增加的功能键写如对应的功能
+    SET HANDLER go_receiver->handle_toolbar FOR wcl_grid.  "增加菜单栏里面的功能键
+    CALL METHOD wcl_grid->set_toolbar_interactive. "激活增加的功能键
+
+*******"获取字段目录的样式
+    PERFORM prepare_field_catalog1 USING ls_fieldcat CHANGING gt_fieldcat1 .
+*******"获取布局的样式
+    PERFORM prepare_layout CHANGING gs_layout.
+*******" 按照定义的内表结构，产生一个内表
+    PERFORM create_dynamic_table.
+*******
+    PERFORM write_data_to_dyntable USING ls_fieldcat CHANGING gt_fieldcat1.
+
+    CALL METHOD wcl_grid1->set_table_for_first_display
+      EXPORTING
+*       I_BUFFER_ACTIVE               =
+*       I_CONSISTENCY_CHECK           =
+*       I_STRUCTURE_NAME              =
+        is_variant                    = g_variant
+        i_save                        = 'A'
+*       i_default                     = 'X'
+        is_layout                     = gs_layout
+        it_toolbar_excluding          = lt_exclude "隐藏掉一些功能按钮
+      CHANGING
+        it_outtab                     = <dyn_table>
+        it_fieldcatalog               = gt_fieldcat1[]
+      EXCEPTIONS
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        OTHERS                        = 4.
+    CREATE OBJECT go_receiver1. "创建新增的菜单按钮
+    SET HANDLER go_receiver1->handle_user_command FOR wcl_grid1."对增加的功能键写如对应的功能
+    SET HANDLER go_receiver1->handle_toolbar FOR wcl_grid1."增加菜单栏里面的功能键
+    SET HANDLER go_receiver1->handle_data_changed FOR wcl_grid1."可编辑数据变化之后重新计算
+    CALL METHOD wcl_grid1->set_toolbar_interactive."激活增加的功能键
+    CALL METHOD wcl_grid1->register_edit_event "回车事件  如果没有 数据变化之后回车没变化
+      EXPORTING
+        i_event_id = cl_gui_alv_grid=>mc_evt_modified.
+
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  PREPARE_FIELD_CATALOG
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      <--P_GT_FIELDCAT  text
+*----------------------------------------------------------------------*
+FORM prepare_field_catalog USING ls_fieldcat  TYPE lvc_s_fcat CHANGING gt_fieldcat TYPE lvc_t_fcat.
+  REFRESH gt_fieldcat[].
+  PERFORM frm_set_fieldcat USING 3  'LGTXT ' '工资名称' ' ' '' ''.
+  PERFORM frm_set_fieldcat USING 2  'LGART ' '工资项目' ' ' 'X' 'X'.
+
+********增加复选框
+  ls_fieldcat-fieldname = 'CHECKBOX'. " 功能D: 增加复选框
+  ls_fieldcat-coltext = '选择'.      " 功能D: 增加复选框
+  ls_fieldcat-checkbox = 'X'.         " 功能D: 增加复选框
+*  IF lt_zlgart1[] IS NOT INITIAL.
+*    READ TABLE lt_zlgart1 INDEX 1.
+*    IF lt_zlgart1-zsyuname = sy-uname.
+  ls_fieldcat-edit = 'X'.             " 功能E: 设定某列可输入
+*    ENDIF.
+*  ENDIF.
+  ls_fieldcat-emphasize = 'X'.
+  ls_fieldcat-intlen  = 10.
+  APPEND ls_fieldcat TO gt_fieldcat. CLEAR ls_fieldcat. " 功能D: 增加复选框
+ENDFORM.                    " PREPARE_FIELD_CATALOG
+*&      Form  FRM_SET_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_1      text
+*      -->P_0296   text
+*      -->P_0297   text
+*      -->P_0298   text
+*----------------------------------------------------------------------*
+FORM frm_set_fieldcat  USING  col_pos name text edit key gl.
+  DATA:ls_fieldcat TYPE lvc_s_fcat.
+  ls_fieldcat-col_pos = col_pos.
+  ls_fieldcat-fieldname = name.
+  ls_fieldcat-scrtext_l  =  text.
+  ls_fieldcat-edit       = edit.
+  ls_fieldcat-fix_column  = key.
+  ls_fieldcat-emphasize  = gl.
+  APPEND ls_fieldcat TO gt_fieldcat.  CLEAR ls_fieldcat.
+ENDFORM.                    " FRM_SET_FIELDCAT
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  PREPARE_LAYOUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      <--P_GS_LAYOUT  text
+*----------------------------------------------------------------------*
+FORM prepare_layout  CHANGING gs_layout TYPE lvc_s_layo.
+*  gs_layout-sel_mode = 'D'.
+  gs_layout-cwidth_opt = 'X'.
+  gs_layout-zebra = 'X'.
+  gs_layout-info_fname = 'ROWCOLOR'.
+  gs_layout-stylefname = 'CELLSTYLE'.
+*  gs_layout-no_toolbar = 'X'.
+ENDFORM.
+FORM prepare_layout1  CHANGING gs_layout1 TYPE lvc_s_layo.
+*  gs_layout-sel_mode = 'D'.
+  gs_layout1-cwidth_opt = 'X'.
+  gs_layout1-zebra = 'X'.
+  gs_layout1-info_fname = 'ROWCOLOR'.
+  gs_layout1-stylefname = 'CELLSTYLE'.
+*  gs_layout1-no_toolbar = 'X'.
+ENDFORM.                  "
+*&---------------------------------------------------------------------*
+*&      Form  PREPARE_FIELD_CATALOG1
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LS_FIELDCAT  text
+*      <--P_GT_FIELDCAT1  text
+*----------------------------------------------------------------------*
+FORM prepare_field_catalog1  USING    ls_fieldcat TYPE lvc_s_fcat
+                             CHANGING gt_fieldcat1 TYPE lvc_t_fcat .
+  REFRESH gt_fieldcat1[].
+
+  ls_fieldcat-col_pos = '1'.
+  ls_fieldcat-fieldname = 'HSFW'.
+  ls_fieldcat-scrtext_l  = '核算范围'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 30.
+  ls_fieldcat-edit       = ''.
+  ls_fieldcat-fix_column  = 'X'.
+  ls_fieldcat-emphasize  = 'X'.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '2'.
+  ls_fieldcat-fieldname = 'NUMBER'.
+  ls_fieldcat-scrtext_l  = '序号'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 4.
+  ls_fieldcat-edit       = ''.
+  ls_fieldcat-fix_column  = 'X'.
+  ls_fieldcat-emphasize  = 'X'.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '3'.
+  ls_fieldcat-fieldname = 'PERNR'.
+  ls_fieldcat-scrtext_l  = '员工编号'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 8.
+  ls_fieldcat-ref_table = 'PERNR'.
+  ls_fieldcat-ref_field = 'PERNR'.
+  ls_fieldcat-edit       = ''.
+  ls_fieldcat-fix_column  = 'X'.
+  ls_fieldcat-emphasize  = 'X'.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '4'.
+  ls_fieldcat-fieldname = 'NACHN'.
+  ls_fieldcat-scrtext_l  = '姓名'.
+  ls_fieldcat-ref_table = 'PA0002'.
+  ls_fieldcat-ref_field = 'NACHN'.
+  ls_fieldcat-edit       = ''.
+  ls_fieldcat-fix_column  = 'X'.
+  ls_fieldcat-emphasize  = 'X'.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '5'.
+  ls_fieldcat-fieldname = 'ICNUM'.
+  ls_fieldcat-scrtext_l  = '身份证号'.
+  ls_fieldcat-ref_table = 'PA0185'.
+  ls_fieldcat-ref_field = 'ICNUM'.
+  ls_fieldcat-edit       = ''.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '6'.
+  ls_fieldcat-fieldname = 'BANKN'.
+  ls_fieldcat-scrtext_l  = '银行卡号'.
+  ls_fieldcat-ref_table = 'PA0009'.
+  ls_fieldcat-ref_field = 'BANKN'.
+  ls_fieldcat-edit       = ''.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '7'.
+  ls_fieldcat-fieldname = 'GANGW'.
+  ls_fieldcat-scrtext_l  = '岗位'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 50.
+  ls_fieldcat-edit       = ''.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '8'.
+  ls_fieldcat-fieldname = 'ZHIWX'.
+  ls_fieldcat-scrtext_l  = '职务小类'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 20.
+  ls_fieldcat-edit       = ''.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '9'.
+  ls_fieldcat-fieldname = 'ZHIWD'.
+  ls_fieldcat-scrtext_l  = '职务大类'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 20.
+  ls_fieldcat-edit       = ''.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '10'.
+  ls_fieldcat-fieldname = 'TRFGR'.
+  ls_fieldcat-scrtext_l  = '岗级'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 20.
+  ls_fieldcat-edit       = ''.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '11'.
+  ls_fieldcat-fieldname = 'TRFST'.
+  ls_fieldcat-scrtext_l  = '薪档'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 20.
+  ls_fieldcat-edit       = ''.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '12'.
+  ls_fieldcat-fieldname = 'ORG1'.
+  ls_fieldcat-scrtext_l  = '事业部/板块'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 20.
+  ls_fieldcat-edit       = ''.
+  IF 01p01 <> 'X'.
+    ls_fieldcat-no_out   = 'X'.
+  ENDIF.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '13'.
+  ls_fieldcat-fieldname = 'ORG2'.
+  ls_fieldcat-scrtext_l  = '三级组织'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 20.
+  ls_fieldcat-edit       = ''.
+  IF 02p02 <> 'X'.
+    ls_fieldcat-no_out   = 'X'.
+  ENDIF.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '14'.
+  ls_fieldcat-fieldname = 'ORG3'.
+  ls_fieldcat-scrtext_l  = '四级组织'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 20.
+  ls_fieldcat-edit       = ''.
+  IF 03p03 <> 'X'.
+    ls_fieldcat-no_out   = 'X'.
+  ENDIF.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '15'.
+  ls_fieldcat-fieldname = 'ORG4'.
+  ls_fieldcat-scrtext_l  = '五级组织'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 20.
+  ls_fieldcat-edit       = ''.
+  IF 04p04 <> 'X'.
+    ls_fieldcat-no_out   = 'X'.
+  ENDIF.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '16'.
+  ls_fieldcat-fieldname = 'ORG5'.
+  ls_fieldcat-scrtext_l  = '六级组织'.
+  ls_fieldcat-inttype  = 'C'.
+  ls_fieldcat-intlen  = 20.
+  ls_fieldcat-edit       = ''.
+  IF 05p05 <> 'X'.
+    ls_fieldcat-no_out   = 'X'.
+  ENDIF.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '17'.
+  ls_fieldcat-fieldname = 'RT559'.
+*  ls_fieldcat-currency  = 'CURR'.
+  ls_fieldcat-datatype  = 'CURR'.
+  ls_fieldcat-scrtext_l  = '实发工资'.
+  ls_fieldcat-edit       = ''.
+  ls_fieldcat-do_sum     = 'X'.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+  ls_fieldcat-col_pos = '18'.
+  ls_fieldcat-fieldname = 'RT101'.
+*  ls_fieldcat-currency  = 'CURR'.
+  ls_fieldcat-datatype  = 'CURR'.
+  ls_fieldcat-scrtext_l  = '应发工资'.
+  ls_fieldcat-edit       = ''.
+  ls_fieldcat-do_sum     = 'X'.
+  APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+
+
+  DATA:col_pos TYPE i VALUE '19'.
+  DATA:col(10),col1(10).
+  LOOP AT gt_title_data.
+    col1 = sy-tabix. CONDENSE col1. "COL1为内表循环的序号
+    gt_title_data-num1 = sy-tabix.
+    CONCATENATE 'COL' col1 INTO col. CONDENSE col.
+    ls_fieldcat-col_pos = col_pos.
+    ls_fieldcat-fieldname = col.
+*    ls_fieldcat-currency  = 'CURR'.
+    ls_fieldcat-datatype  = 'CURR'.
+    ls_fieldcat-scrtext_l  = gt_title_data-lgtxt.
+    ls_fieldcat-intlen  = 13.
+    IF gt_title_data-checkbox <> 'X'.
+      ls_fieldcat-no_out  = 'X'.
+    ENDIF.
+    ls_fieldcat-edit       = ''.
+    ls_fieldcat-do_sum     = 'X'.
+    APPEND ls_fieldcat TO gt_fieldcat1.  CLEAR ls_fieldcat.
+    col_pos = col_pos + 1.
+    MODIFY gt_title_data. CLEAR gt_title_data.
+  ENDLOOP.
+ENDFORM.                    " PREPARE_FIELD_CATALOG1
+*&---------------------------------------------------------------------*
+*&      Form  EXCLUDE_FUNCTIONS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_LT_EXCLUDE  text
+*----------------------------------------------------------------------*
+FORM exclude_functions  USING   lt_exclude TYPE ui_functions..
+  DATA: ls_exclude TYPE ui_func."功能代码
+  ls_exclude = cl_gui_alv_grid=>mc_fc_check .
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_loc_copy .
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_loc_copy_row.
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_loc_cut .
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_loc_delete_row .
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_loc_insert_row.
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_loc_paste .
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_loc_paste_new_row.
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_loc_undo.
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_loc_append_row.
+  APPEND ls_exclude TO lt_exclude.
+
+  ls_exclude = cl_gui_alv_grid=>mc_fc_print.
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_refresh.
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_subtot.
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_views.
+  APPEND ls_exclude TO lt_exclude.
+  ls_exclude = cl_gui_alv_grid=>mc_fc_view_crystal.
+  APPEND ls_exclude TO lt_exclude.
+ENDFORM.                    " EXCLUDE_FUNCTIONS
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_DYNAMIC_TABLE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM create_dynamic_table .
+  IF gt_fieldcat1[] IS NOT INITIAL.
+    CALL METHOD cl_alv_table_create=>create_dynamic_table
+      EXPORTING
+        it_fieldcatalog = gt_fieldcat1
+      IMPORTING
+        ep_table        = dy_table.
+    ASSIGN dy_table->* TO <dyn_table>.    " 用表类型指针 <dyn_table> 指向 数据对象的内容.
+    ASSIGN dy_table->* TO <dyn_table1>.    " 用表类型指针 <dyn_table> 指向 数据对象的内容.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  WRITE_DATA_TO_DYNTABLE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM write_data_to_dyntable USING    ls_fieldcat TYPE lvc_s_fcat
+                             CHANGING gt_fieldcat1 TYPE lvc_t_fcat .
+  DATA:wa_new_line TYPE REF TO data.
+
+  CREATE DATA wa_new_line LIKE LINE OF <dyn_table>.  " 建立一个与动态内表结构相同的数据对象，且数据对象为是一个结构
+  ASSIGN wa_new_line->* TO <dyn_wa>." 用<dyn_wa>指针指向该结构
+
+  FIELD-SYMBOLS:<af1> LIKE LINE OF gt_mian_data.
+  FIELD-SYMBOLS:<field> TYPE  any .
+
+*******************按照组织部门排序********************
+  DATA: it_result_struc LIKE struc OCCURS 0 WITH HEADER LINE.
+  DATA: lv_objid LIKE hrp1001-objid.
+  DATA: lv_count TYPE i.
+  DATA: lv_lines TYPE i.
+  DESCRIBE TABLE gt_mian_data LINES lv_lines.
+  IF lv_lines >  1.
+    IF p_objid IS INITIAL.
+      CALL FUNCTION 'RH_STRUC_GET'
+        EXPORTING
+          act_otype       = 'O'
+          act_objid       = '10000000'                          "'10001000'
+          act_wegid       = 'PERS-O'
+          act_plvar       = '01'
+          act_begda       = sy-datum
+          act_endda       = sy-datum
+          act_tflag       = 'X'
+          act_vflag       = 'X'
+          authority_check = 'X'
+        TABLES
+          result_struc    = it_result_struc
+        EXCEPTIONS
+          no_plvar_found  = 1
+          no_entry_found  = 2
+          OTHERS          = 3.
+      DELETE it_result_struc WHERE otype = 'O'.
+      CLEAR lv_count.
+      LOOP AT it_result_struc.
+        READ TABLE gt_mian_data WITH KEY pernr = it_result_struc-objid.
+        IF sy-subrc = 0.
+          lv_count = lv_count + 1.
+          it_result_struc-seqnr = lv_count.
+          MODIFY it_result_struc.
+        ELSE.
+          DELETE it_result_struc.
+        ENDIF.
+      ENDLOOP.
+      LOOP AT gt_mian_data.
+        READ TABLE it_result_struc WITH KEY objid =  gt_mian_data-pernr.
+        IF sy-subrc = 0.
+          gt_mian_data-zinx = it_result_struc-seqnr.
+        ELSE.
+          gt_mian_data-zinx = 99999.
+        ENDIF.
+        MODIFY gt_mian_data.CLEAR gt_mian_data.
+      ENDLOOP.
+      SORT gt_mian_data BY zinx.
+      LOOP AT gt_mian_data.
+        gt_mian_data-number = sy-tabix.
+        MODIFY gt_mian_data.CLEAR gt_mian_data.
+      ENDLOOP.
+    ELSE.
+      CALL FUNCTION 'RH_STRUC_GET'
+        EXPORTING
+          act_otype       = 'O'
+          act_objid       = p_objid                         "'10001000'
+          act_wegid       = 'PERS-O'
+          act_plvar       = '01'
+          act_begda       = sy-datum
+          act_endda       = sy-datum
+          act_tflag       = 'X'
+          act_vflag       = 'X'
+          authority_check = 'X'
+        TABLES
+          result_struc    = it_result_struc
+        EXCEPTIONS
+          no_plvar_found  = 1
+          no_entry_found  = 2
+          OTHERS          = 3.
+      DELETE it_result_struc WHERE otype = 'O'.
+      CLEAR lv_count.
+      LOOP AT it_result_struc.
+        READ TABLE gt_mian_data WITH KEY pernr = it_result_struc-objid.
+        IF sy-subrc = 0.
+          lv_count = lv_count + 1.
+          it_result_struc-seqnr = lv_count.
+          MODIFY it_result_struc.
+        ELSE.
+          DELETE it_result_struc.
+        ENDIF.
+      ENDLOOP.
+      LOOP AT gt_mian_data.
+        READ TABLE it_result_struc WITH KEY objid =  gt_mian_data-pernr.
+        IF sy-subrc = 0.
+          gt_mian_data-zinx = it_result_struc-seqnr.
+        ELSE.
+          gt_mian_data-zinx = 99999.
+        ENDIF.
+        MODIFY gt_mian_data.CLEAR gt_mian_data.
+      ENDLOOP.
+      SORT gt_mian_data BY zinx.
+      LOOP AT gt_mian_data.
+        gt_mian_data-number = sy-tabix.
+        MODIFY gt_mian_data.CLEAR gt_mian_data.
+      ENDLOOP.
+    ENDIF.
+    ELSEIF lv_lines = 1.
+      LOOP AT gt_mian_data.
+        gt_mian_data-number = sy-tabix.
+        MODIFY gt_mian_data.CLEAR gt_mian_data.
+      ENDLOOP.
+  ENDIF.
+*******************按照组织部门排序********************
+
+  ASSIGN gt_mian_data TO <af1> CASTING.
+  LOOP AT gt_mian_data.
+*    gt_mian_data-number = sy-tabix.
+    LOOP AT gt_fieldcat1 INTO ls_fieldcat.
+      CASE sy-tabix.
+        WHEN 1.
+          ASSIGN COMPONENT 1 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 2.
+          ASSIGN COMPONENT 2 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 3.
+          ASSIGN COMPONENT 3 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 4.
+          ASSIGN COMPONENT 4 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 5.
+          ASSIGN COMPONENT 5 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 6.
+          ASSIGN COMPONENT 6 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 7.
+          ASSIGN COMPONENT 7 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 8.
+          ASSIGN COMPONENT 8 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 9.
+          ASSIGN COMPONENT 9 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 10.
+          ASSIGN COMPONENT 10 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 11.
+          ASSIGN COMPONENT 11 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 12.
+          ASSIGN COMPONENT 12 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 13.
+          ASSIGN COMPONENT 13 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 14.
+          ASSIGN COMPONENT 14 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 15.
+          ASSIGN COMPONENT 15 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 16.
+          ASSIGN COMPONENT 16 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 17.
+          ASSIGN COMPONENT 17 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN 18.
+          ASSIGN COMPONENT 18 OF STRUCTURE <af1> TO <field>.
+          ASSIGN COMPONENT ls_fieldcat-fieldname OF STRUCTURE <dyn_wa> TO <dyn_field>.  " 用指针 <dyn_field>指向工作区<dyn_wa>中的一个字段，字段名为wa_structure-fieldname.
+          MOVE <field> TO <dyn_field>.
+        WHEN OTHERS.
+          EXIT.
+      ENDCASE.
+    ENDLOOP.
+    APPEND <dyn_wa> TO <dyn_table>.
+  ENDLOOP.
+
+
+  DATA:col1(10),col(10).
+  LOOP AT <dyn_table> ASSIGNING <dyn_wa>.
+    ASSIGN COMPONENT 3 OF STRUCTURE <dyn_wa> TO <field>.
+    LOOP AT gt_betrg1 WHERE pernr = <field>.
+      IF sy-subrc = 0.
+        LOOP AT gt_title_data WHERE checkbox = 'X' AND lgart = gt_betrg1-zgzxmbm.
+          col1 = sy-tabix. CONDENSE col1.
+          CONCATENATE 'COL' col1 INTO col.
+          ASSIGN COMPONENT col OF STRUCTURE <dyn_wa> TO <dyn_field>.
+          MOVE gt_betrg1-betrg TO <dyn_field>.
+        ENDLOOP.
+      ENDIF.
+      CLEAR sy-subrc.
+    ENDLOOP.
+  ENDLOOP.
+
+******"控制多次点击计算的时候始终动态列都是不输出的
+  LOOP AT gt_fieldcat1 INTO ls_fieldcat WHERE fieldname+0(3) = 'COL'.
+    ls_fieldcat-no_out = 'X'.
+    MODIFY gt_fieldcat1 FROM ls_fieldcat.
+  ENDLOOP.
+
+  CLEAR:col1,col.
+  LOOP AT gt_title_data WHERE checkbox = 'X'.
+    col1 = sy-tabix. CONDENSE col1.
+    CONCATENATE 'COL' col1 INTO col.
+    LOOP AT gt_fieldcat1 INTO ls_fieldcat WHERE fieldname = col.
+      ls_fieldcat-no_out = ''.
+      MODIFY gt_fieldcat1 FROM ls_fieldcat.
+    ENDLOOP.
+  ENDLOOP.
+
+
+*  CALL METHOD wcl_grid1->set_frontend_fieldcatalog
+*    EXPORTING
+*      it_fieldcatalog = gt_fieldcat1[].
+*
+*  CALL METHOD wcl_grid1->set_frontend_layout
+*    EXPORTING
+*      is_layout = gs_layout.
+
+*  CALL METHOD wcl_grid1->refresh_table_display.
+
+ENDFORM.                    " WRITE_DATA_TO_DYNTABLE
